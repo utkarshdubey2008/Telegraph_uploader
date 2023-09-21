@@ -1,3 +1,4 @@
 telegraph
 Pyrogram==1.4.16
 TGcrypto
+PyMongo
