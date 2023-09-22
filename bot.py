@@ -7,7 +7,7 @@ from sample_config import Config
 
 # Setup MongoDB connection
 mongo_client = pymongo.MongoClient(Config.MONGO_URL)
-db = mongo_client[Config.MONGO_DATABASE]
+db = mongo_client[Config.MONGO_URL]
 
 app = Client(
     "Telegra.ph Uploader",
