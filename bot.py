@@ -1,139 +1,104 @@
-#    This file is part of the ChannelAutoForwarder distribution (https://github.com/utkarsh212646/Telegraph_uploader).
-#    Copyright (c) 2021 Rithunand
-#    
-#    This program is free software: you can redistribute it and/or modify  
-#    it under the terms of the GNU General Public License as published by  
-#    the Free Software Foundation, version 3.
-# 
-#    This program is distributed in the hope that it will be useful, but 
-#    WITHOUT ANY WARRANTY; without even the implied warranty of 
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
-#    General Public License for more details.
-# 
-#    License can be found in < https://github.com/utkarsh212646/Telegraph_Uploader/blob/main/License> 
-
-import os
 from telegraph import upload_file
-import pyrogram
-from pyrogram import filters, Client
+from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import os
+import pymongo
 from sample_config import Config
-from pyrogram.types import (
-    InlineQueryResultArticle, InputTextMessageContent,
-    InlineKeyboardMarkup, InlineKeyboardButton,
-    CallbackQuery, InlineQuery)
 
-Tgraph = Client(
-   "Telegra.ph Uploader",
-   api_id=Config.APP_ID,
-   api_hash=Config.API_HASH,
-   bot_token=Config.TG_BOT_TOKEN,
+# Setup MongoDB connection
+mongo_client = pymongo.MongoClient(Config.MONGO_URI)
+db = mongo_client[Config.MONGO_DATABASE]
+
+app = Client(
+    "Telegra.ph Uploader",
+    api_id=Config.APP_ID,
+    api_hash=Config.API_HASH,
+    bot_token=Config.TG_BOT_TOKEN,
 )
 
-@Tgraph.on_message(filters.photo)
-async def uploadphoto(client, message):
-  msg = await message.reply_text("`Tʀʏɪɴɢ Tᴏ Dᴏᴡɴʟᴏᴀᴅ`")
-  userid = str(message.chat.id)
-  img_path = (f"./DOWNLOADS/{userid}.jpg")
-  img_path = await client.download_media(message=message, file_name=img_path)
-  await msg.edit_text("`Tʀʏɪɴɢ Tᴏ Uᴘʟᴏᴀᴅ.....`")
-  try:
-    tlink = upload_file(img_path)
-  except:
-    await msg.edit_text("`Something went wrong`") 
-  else:
-    await msg.edit_text(f"https://telegra.ph{tlink[0]}")     
-    os.remove(img_path) 
+# Define a collection in MongoDB for storing subscribed users
+subscribed_users = db["subscribed_users"]
 
-@Tgraph.on_message(filters.animation)
-async def uploadgif(client, message):
-  if(message.animation.file_size < 5242880):
-    msg = await message.reply_text("`Tʀʏɪɴɢ Tᴏ Dᴏᴡɴʟᴏᴀᴅ`")
-    userid = str(message.chat.id)
-    gif_path = (f"./DOWNLOADS/{userid}.mp4")
-    gif_path = await client.download_media(message=message, file_name=gif_path)
-    await msg.edit_text("`Tʀʏɪɴɢ Tᴏ Uᴘʟᴏᴀᴅ.....`")
+@app.on_message(filters.photo)
+async def upload_photo(client, message):
+    # Check if user is subscribed
+    subscribed = await is_user_subscribed(message.from_user.id)
+    
+    if not subscribed:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text="Please subscribe to @thealphabotz channel to use this bot.",
+            reply_to_message_id=message.message_id
+        )
+        return
+    
+    msg = await message.reply_text("Downloading...")
+    img_path = f"./DOWNLOADS/{message.from_user.id}.jpg"
+    img_path = await client.download_media(message=message, file_name=img_path)
+    await msg.edit_text("Uploading...")
     try:
-      tlink = upload_file(gif_path)
-      await msg.edit_text(f"https://telegra.ph{tlink[0]}")   
-      os.remove(gif_path)   
+        upload_result = upload_file(img_path)
+        telegraph_url = "https://telegra.ph" + upload_result[0]
+        await msg.edit_text(f"Image uploaded: {telegraph_url}")
     except:
-      await msg.edit_text("Something really Happend Wrong...") 
-  else:
-    await message.reply_text("Size Should Be Less Than 5 mb")
+        await msg.edit_text("Something went wrong")
+    finally:
+        os.remove(img_path)
 
-@Tgraph.on_message(filters.video)
-async def uploadvid(client, message):
-  if(message.video.file_size < 5242880):
-    msg = await message.reply_text("`Tʀʏɪɴɢ Tᴏ Dᴏᴡɴʟᴏᴀᴅ`")
-    userid = str(message.chat.id)
-    vid_path = (f"./DOWNLOADS/{userid}.mp4")
-    vid_path = await client.download_media(message=message, file_name=vid_path)
-    await msg.edit_text("`Tʀʏɪɴɢ Tᴏ Uᴘʟᴏᴀᴅ.....`")
-    try:
-      tlink = upload_file(vid_path)
-      await msg.edit_text(f"https://telegra.ph{tlink[0]}")     
-      os.remove(vid_path)   
-    except:
-      await msg.edit_text("Something really Happend Wrong...") 
-  else:
-    await message.reply_text("Size Should Be Less Than 5 mb")
+@app.on_message(filters.animation)
+async def upload_animation(client, message):
+    subscribed = await is_user_subscribed(message.from_user.id)
+    
+    if not subscribed:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text="Please subscribe to @thealphabotz channel to use this bot.",
+            reply_to_message_id=message.message_id
+        )
+        return
 
-@Tgraph.on_message(filters.command(["start"]))
+    if message.animation.file_size < 5242880:
+        msg = await message.reply_text("Downloading...")
+        gif_path = f"./DOWNLOADS/{message.from_user.id}.mp4"
+        gif_path = await client.download_media(message=message, file_name=gif_path)
+        await msg.edit_text("Uploading...")
+        try:
+            upload_result = upload_file(gif_path)
+            telegraph_url = "https://telegra.ph" + upload_result[0]
+            await msg.edit_text(f"GIF uploaded: {telegraph_url}")
+        except:
+            await msg.edit_text("Something went wrong")
+        finally:
+            os.remove(gif_path)
+    else:
+        await message.reply_text("Size should be less than 5 MB")
+
+# Add other upload functions for videos and handle_messages (if needed)
+
+async def is_user_subscribed(user_id):
+    user = subscribed_users.find_one({"user_id": user_id})
+    return True if user else False
+
+@app.on_message(filters.command(["start"]))
 async def home(client, message):
-  buttons = [[
-        InlineKeyboardButton('Help', callback_data='help'),
-        InlineKeyboardButton('Close', callback_data='close')
-    ],
-    [
-        InlineKeyboardButton('Our Channel', url='http://telegram.me/alpha_bot_updates'),
-        InlineKeyboardButton('Support', url='http://telegram.me/alpha_bot_support')
-    ]]
-  reply_markup = InlineKeyboardMarkup(buttons)
-  await Tgraph.send_message(
+    buttons = [
+        [
+            InlineKeyboardButton('Help', callback_data='help'),
+            InlineKeyboardButton('Close', callback_data='close')
+        ],
+        [
+            InlineKeyboardButton('Our Channel', url='http://telegram.me/alpha_bot_updates'),
+            InlineKeyboardButton('Support', url='http://telegram.me/alpha_bot_support')
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(buttons)
+    await client.send_message(
         chat_id=message.chat.id,
-        text="""<b>Hey there,
-        
-im a telegraph Uploader That Can Upload Photo, Video And Gif
-        
-Simply send me photo, video or gif to upload to Telegraph Url
-        
-By @alpha_bot_support</b>""",
+        text="<strong>Hey there,</strong>\n\nI'm a Telegraph Uploader that can upload photos, videos, and GIFs to Telegraph URL.\n\nSimply send me a photo, video, or GIF to use.",
         reply_markup=reply_markup,
         parse_mode="html",
         reply_to_message_id=message.message_id
     )
+    
 
-@Tgraph.on_message(filters.command(["help"]))
-async def help(client, message):
-  buttons = [[
-        InlineKeyboardButton('Home', callback_data='home'),
-        InlineKeyboardButton('Close', callback_data='close')
-    ],
-    [
-        InlineKeyboardButton('Our Channel', url='http://telegram.me/alpha_bot_updates')
-    ]]
-  reply_markup = InlineKeyboardMarkup(buttons)
-  await Tgraph.send_message(
-        chat_id=message.chat.id,
-        text="""There Is Nothung To KnowMore,
-        
-Just Send Me A Video/gif/photo Upto 5mb.
-
-i'll upload ut to telegra.ph and give you the direct link""",
-        reply_markup=reply_markup,
-        parse_mode="html",
-        reply_to_message_id=message.message_id
-    )                           
-@Tgraph.on_callback_query()
-async def button(Tgraph, update):
-      cb_data = update.data
-      if "help" in cb_data:
-        await update.message.delete()
-        await help(Tgraph, update.message)
-      elif "close" in cb_data:
-        await update.message.delete() 
-      elif "home" in cb_data:
-        await update.message.delete()
-        await home(Tgraph, update.message)
-
-Tgraph.run()
+app.run()
