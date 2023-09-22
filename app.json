@@ -23,7 +23,11 @@
         "APP_ID": {
             "description": "Your API ID from my.telegram.org",
             "value": ""
-        }
+        },
+        "MONGO_URL": {
+             "description": "Your Mongo Db Url",
+             "value": ""
+    }
     },
     "addons": [],
     "buildpacks": [
